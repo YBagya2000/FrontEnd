@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, Card, Alert, Typography } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
-// import loginBg from '../../assets/images/login_bg.jpg'
 
 const { Title, Text } = Typography;
 
@@ -17,49 +16,39 @@ const LoginPage = () => {
     const onFinish = async (values) => {
         setLoading(true);
         setError('');
-
+    
         try {
-            // const response = await fetch('your-api-endpoint/auth/login', {
-            //     method: 'POST',
-            //     headers: {
-            //         'Content-Type': 'application/json',
-            //     },
-            //     body: JSON.stringify(values),
-            // });
-
-            // const data = await response.json();
-
-            //? Temporary
-            console.log(values);
-            const response = {
-                ok: true,
-                data: {
-                    token: "token",
-                    role: "admin"
-                }
-            }
-
-            const data = response.data;
-
+            const response = await fetch('/api/v1/auth/login/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: values.username,
+                    password: values.password
+                }),
+            });
+    
             if (!response.ok) {
-                throw new Error(data.message || 'Login failed');
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Login failed');
             }
-            //?
-
-            auth.login(data.token, data.role);
-
-            // Redirect based on role
-            switch (data.role) {
-                case 'admin':
-                    navigate('/admin');
-                    break;
-                case 'user':
-                    navigate('/');
-                    break;
+    
+            const data = await response.json();
+            
+            // Store token and handle login
+            auth.login(data.tokens.access, data.user.role);
+    
+            // Redirect based on role - Fixed paths
+            if (data.user.role === 'Vendor') {
+                navigate('/vendor/dashboard');
+            } else if (data.user.role === 'RA_Team') {
+                navigate('/admin/dashboard');
             }
-
+    
         } catch (err) {
-            setError(err.message);
+            console.error('Login error:', err);
+            setError(err.message || 'Failed to login. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -105,23 +94,21 @@ const LoginPage = () => {
                 >
                     <Form.Item
                         name="username"
-                        initialValue="username"
                         rules={[
                             {
                                 required: true,
-                                message: 'Please input your username!',
+                                message: 'Please input your email!',
                             },
                         ]}
                     >
                         <Input
                             prefix={<UserOutlined style={{ color: 'rgba(0,0,0,.25)' }} />}
-                            placeholder="Username"
+                            placeholder="Email"
                         />
                     </Form.Item>
 
                     <Form.Item
                         name="password"
-                        initialValue="password"
                         rules={[
                             {
                                 required: true,
