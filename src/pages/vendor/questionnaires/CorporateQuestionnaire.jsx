@@ -31,7 +31,6 @@ const CorporateQuestionnaire = () => {
   const [formChanged, setFormChanged] = useState(false);
   const navigate = useNavigate();
 
-  // Fetch questionnaire data
   useEffect(() => {
     const fetchQuestionnaire = async () => {
       try {
@@ -46,16 +45,21 @@ const CorporateQuestionnaire = () => {
         }
 
         const data = await response.json();
-        console.log('Initial questionnaire data:', data);
-        setQuestions(data.questions);
+        console.log('Fetched questionnaire data:', data);
 
-        // If there are saved responses, populate the form
-        if (data.responses) {
-          const formValues = {};
-          data.responses.forEach(response => {
-            formValues[`question_${response.question_id}`] = response.response_text;
-          });
-          form.setFieldsValue(formValues);
+        if (Array.isArray(data.questions)) {
+          setQuestions(data.questions);
+          
+          if (data.responses && Array.isArray(data.responses)) {
+            const formValues = {};
+            data.responses.forEach(response => {
+              formValues[`question_${response.question_id}`] = response.response_text;
+            });
+            console.log('Setting initial form values:', formValues);
+            form.setFieldsValue(formValues);
+          }
+        } else {
+          throw new Error('Invalid questions data received');
         }
       } catch (error) {
         console.error('Failed to load questionnaire:', error);
@@ -72,15 +76,52 @@ const CorporateQuestionnaire = () => {
     setFormChanged(true);
   };
 
+  const validateSection = async (sectionQuestions) => {
+    try {
+      const values = await form.validateFields(
+        sectionQuestions.map(q => `question_${q.id}`)
+      );
+      return { valid: true, values };
+    } catch (error) {
+      return { valid: false, error };
+    }
+  };
+
+  const handleSectionChange = async (newSection) => {
+    // Group questions by section
+    const sections = questions.reduce((acc, question) => {
+      if (!acc[question.section]) {
+        acc[question.section] = [];
+      }
+      acc[question.section].push(question);
+      return acc;
+    }, {});
+
+    const sectionNames = Object.keys(sections);
+    const currentSectionQuestions = sections[sectionNames[currentSection]];
+
+    // Validate current section before allowing change
+    const validation = await validateSection(currentSectionQuestions);
+    if (!validation.valid) {
+      message.error('Please complete all questions in the current section before proceeding');
+      return;
+    }
+
+    setCurrentSection(newSection);
+  };
+
   const handleSave = async () => {
     try {
       setSaving(true);
-      const values = form.getFieldsValue();
-      
+      const formValues = form.getFieldsValue(true); // Get all values including hidden fields
+      console.log('Saving form values:', formValues);
+
       const responses = questions.map(question => ({
         question_id: question.id,
-        response_text: values[`question_${question.id}`]?.trim() || ''
+        response_text: formValues[`question_${question.id}`]?.trim() || ''
       }));
+
+      console.log('Saving responses:', responses);
 
       const response = await fetch('/api/v1/vendor/questionnaires/corporate/save/', {
         method: 'POST',
@@ -128,33 +169,35 @@ const CorporateQuestionnaire = () => {
   const handleSubmit = async () => {
     try {
       // Get all form values
-      const values = await form.validateFields();
-      console.log('Form values before submission:', values);
+      const formValues = form.getFieldsValue(true);
+      console.log('All form values:', formValues);
 
-      // Map questions to responses, including debugging
-      const responses = questions.map(question => {
+      // Create responses array with explicit checks
+      const allResponses = questions.map(question => {
         const fieldName = `question_${question.id}`;
-        const response = values[fieldName];
-        console.log(`Field ${fieldName}:`, response); // Debug log
+        const value = formValues[fieldName];
         
+        console.log(`Processing ${fieldName}:`, {
+          questionId: question.id,
+          questionText: question.question_text,
+          value: value
+        });
+
         return {
           question_id: question.id,
-          response_text: response?.trim() || ''
+          response_text: value?.trim() || ''
         };
       });
 
-      console.log('Prepared responses:', responses);
+      // Check for missing responses
+      const missingQuestions = questions.filter(question => {
+        const response = formValues[`question_${question.id}`];
+        return !response || !response.trim();
+      });
 
-      // Check for empty responses
-      const emptyResponses = responses.filter(r => !r.response_text);
-      if (emptyResponses.length > 0) {
-        const emptyQuestions = emptyResponses
-          .map(r => questions.find(q => q.id === r.question_id)?.question_text)
-          .filter(Boolean);
-        
-        message.error(
-          `Please answer all questions. Missing ${emptyResponses.length} answers: ${emptyQuestions.join(', ')}`
-        );
+      if (missingQuestions.length > 0) {
+        const missingTexts = missingQuestions.map(q => q.question_text).join(', ');
+        message.error(`Please answer all questions. Missing: ${missingTexts}`);
         return;
       }
 
@@ -165,13 +208,15 @@ const CorporateQuestionnaire = () => {
         onOk: async () => {
           setSubmitting(true);
           try {
+            console.log('Submitting responses:', { responses: allResponses });
+
             const response = await fetch('/api/v1/vendor/questionnaires/corporate/submit/', {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`,
                 'Content-Type': 'application/json'
               },
-              body: JSON.stringify({ responses })
+              body: JSON.stringify({ responses: allResponses })
             });
 
             if (!response.ok) {
@@ -190,8 +235,8 @@ const CorporateQuestionnaire = () => {
         }
       });
     } catch (error) {
-      console.error('Form validation error:', error);
-      // Let antd handle the validation error messages
+      console.error('Form error:', error);
+      message.error('Please ensure all questions are answered correctly');
     }
   };
 
@@ -226,7 +271,7 @@ const CorporateQuestionnaire = () => {
       >
         <Steps
           current={currentSection}
-          onChange={setCurrentSection}
+          onChange={handleSectionChange}
           items={sectionNames.map(section => ({
             title: section,
             description: `${sections[section].length} questions`
@@ -241,6 +286,19 @@ const CorporateQuestionnaire = () => {
           className="max-w-2xl mx-auto"
           onValuesChange={handleFormChange}
         >
+          {/* Hidden fields for all questions */}
+          <div style={{ display: 'none' }}>
+            {questions.map(question => (
+              <Form.Item
+                key={`hidden-${question.id}`}
+                name={`question_${question.id}`}
+              >
+                <TextArea />
+              </Form.Item>
+            ))}
+          </div>
+
+          {/* Visible fields for current section */}
           {sections[sectionNames[currentSection]]?.map(question => (
             <Form.Item
               key={question.id}
@@ -256,14 +314,18 @@ const CorporateQuestionnaire = () => {
               rules={[
                 { 
                   required: true, 
-                  whitespace: true,
                   message: `Please answer: ${question.question_text}` 
                 },
                 { 
                   min: 3, 
                   message: 'Answer must be at least 3 characters long' 
+                },
+                {
+                  whitespace: true,
+                  message: 'Answer cannot be only whitespace'
                 }
               ]}
+              validateTrigger={['onBlur', 'onChange']}
             >
               <TextArea
                 rows={4}
@@ -278,7 +340,7 @@ const CorporateQuestionnaire = () => {
             <Space>
               <Button
                 icon={<ArrowLeftOutlined />}
-                onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+                onClick={() => handleSectionChange(Math.max(0, currentSection - 1))}
                 disabled={currentSection === 0}
               >
                 Previous
@@ -306,7 +368,7 @@ const CorporateQuestionnaire = () => {
               ) : (
                 <Button
                   type="primary"
-                  onClick={() => setCurrentSection(prev => prev + 1)}
+                  onClick={() => handleSectionChange(currentSection + 1)}
                 >
                   Next Section
                 </Button>
