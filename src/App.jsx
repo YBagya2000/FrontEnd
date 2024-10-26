@@ -6,6 +6,8 @@ import VendorDashboard from './pages/vendor/VendorDashboard';
 import CorporateQuestionnaire from './pages/vendor/questionnaires/CorporateQuestionnaire';
 import ContextualQuestionnaire from './pages/vendor/questionnaires/ContextualQuestionnaire';
 import RiskAssessmentQuestionnaire from './pages/vendor/questionnaires/RiskAssessmentQuestionnaire';
+import AdminDashboard from './pages/admin/AdminDashboardPage';
+import SubmissionReview from './pages/admin/SubmissionReview';
 
 function App() {
   return (
@@ -48,6 +50,35 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['RA_Team']}>
+              <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/review/:submissionId"
+            element={
+              <ProtectedRoute allowedRoles={['RA_Team']}>
+                <SubmissionReview />
+              </ProtectedRoute>
+  }
+/>
+          {/* <Route
+            path="/admin"
+          >
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute allowedRoles={['RA_Team']}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              }
+            />
+          </Route> */}
 
           {/* Root Redirect */}
           <Route path="/" element={<Navigate to="/login" replace />} />

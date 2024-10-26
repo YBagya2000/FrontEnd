@@ -47,6 +47,40 @@ const ContextualQuestionnaire = () => {
     }
   }, [questionnaire, form]);
 
+  const validateSection = async (sectionQuestions) => {
+    try {
+      const values = await form.validateFields(
+        sectionQuestions.map(q => `question_${q.id}`)
+      );
+      return { valid: true, values };
+    } catch (error) {
+      return { valid: false, error };
+    }
+  };
+
+  const handleSectionChange = async (newSection) => {
+    // Group questions by section
+    const sections = questions.reduce((acc, question) => {
+      if (!acc[question.section]) {
+        acc[question.section] = [];
+      }
+      acc[question.section].push(question);
+      return acc;
+    }, {});
+
+    const sectionNames = Object.keys(sections);
+    const currentSectionQuestions = sections[sectionNames[currentSection]];
+
+    // Validate current section before allowing change
+    const validation = await validateSection(currentSectionQuestions);
+    if (!validation.valid) {
+      message.error('Please complete all questions in the current section before proceeding');
+      return;
+    }
+
+    setCurrentSection(newSection);
+  };
+
   // Initial data fetch
   useEffect(() => {
     fetchQuestionnaire();
@@ -149,7 +183,7 @@ const ContextualQuestionnaire = () => {
       <Card title="Contextual Questionnaire" className="mb-4">
         <Steps
           current={currentSection}
-          onChange={setCurrentSection}
+          onChange={handleSectionChange}
           items={sectionNames.map(section => ({ title: section }))}
         />
       </Card>
@@ -160,6 +194,18 @@ const ContextualQuestionnaire = () => {
           layout="vertical"
           className="max-w-2xl mx-auto"
         >
+
+            {/* Hidden fields for all questions */}
+          <div style={{ display: 'none' }}>
+            {questions.map(question => (
+              <Form.Item
+                key={`hidden-${question.id}`}
+                name={`question_${question.id}`}
+              >
+              </Form.Item>
+            ))}
+          </div>
+
           {sections[sectionNames[currentSection]]?.map(question => (
             <Form.Item
               key={question.id}
@@ -192,7 +238,7 @@ const ContextualQuestionnaire = () => {
 
           <div className="flex justify-between mt-6">
             <Button
-              onClick={() => setCurrentSection(prev => Math.max(0, prev - 1))}
+              onClick={() => handleSectionChange(Math.max(0, currentSection - 1))}
               disabled={currentSection === 0}
             >
               Previous
@@ -217,7 +263,7 @@ const ContextualQuestionnaire = () => {
               {currentSection < sectionNames.length - 1 && (
                 <Button
                   type="primary"
-                  onClick={() => setCurrentSection(prev => prev + 1)}
+                  onClick={() => handleSectionChange(currentSection + 1)}
                 >
                   Next
                 </Button>

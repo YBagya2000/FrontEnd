@@ -1,15 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
-  Form, Card, Steps, Button, Radio, Input, 
-  Upload, message, Modal, Space, Progress 
+  Form, 
+  Input, 
+  Button, 
+  Card, 
+  Steps, 
+  Radio, 
+  message, 
+  Modal, 
+  Space, 
+  Progress,
+  Tooltip
 } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import FileUploadQuestion from './FileUploadQuestion';
+import { ArrowLeftOutlined, HomeOutlined, InfoOutlined, SaveOutlined, SendOutlined } from '@ant-design/icons';
 
 const { TextArea } = Input;
 
 const RiskAssessmentQuestionnaire = () => {
   const [form] = Form.useForm();
+  const [questionnaireId, setQuestionnaireId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -17,6 +28,7 @@ const RiskAssessmentQuestionnaire = () => {
   const [currentFactor, setCurrentFactor] = useState(0);
   const [currentSubFactor, setCurrentSubFactor] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState({});
+  const [formChanged, setFormChanged] = useState(false);
   const navigate = useNavigate();
 
   const fetchQuestionnaire = useCallback(async () => {
@@ -32,19 +44,26 @@ const RiskAssessmentQuestionnaire = () => {
       }
 
       const data = await response.json();
+      console.log('Fetched questionnaire data:', data);
+      setQuestionnaireId(data.questionnaire_id);
       setMainFactors(data.main_factors);
       
-      // If there are saved responses, populate the form
       if (data.responses) {
         const formValues = {};
         data.responses.forEach(response => {
-          const fieldName = `question_${response.question.id}`;
-          if (response.question.type === 'YN') {
-            formValues[fieldName] = response.yes_no_response;
-          } else if (response.question.type === 'MC') {
-            formValues[fieldName] = response.selected_choice;
-          } else if (response.question.type === 'SA') {
-            formValues[fieldName] = response.response_text;
+          const question = data.main_factors
+            .flatMap(f => f.sub_factors)
+            .flatMap(sf => sf.questions)
+            .find(q => q.id === response.question_id);
+
+          if (question) {
+            if (question.type === 'YN') {
+              formValues[`question_${response.question_id}`] = response.answer;
+            } else if (question.type === 'MC') {
+              formValues[`question_${response.question_id}`] = response.choice_id;
+            } else if (question.type === 'SA') {
+              formValues[`question_${response.question_id}`] = response.answer;
+            }
           }
         });
         form.setFieldsValue(formValues);
@@ -62,7 +81,6 @@ const RiskAssessmentQuestionnaire = () => {
         });
         setUploadedFiles(files);
       }
-
     } catch (error) {
       console.error('Error fetching questionnaire:', error);
       message.error('Failed to load questionnaire');
@@ -75,58 +93,94 @@ const RiskAssessmentQuestionnaire = () => {
     fetchQuestionnaire();
   }, [fetchQuestionnaire]);
 
-  const handleUpload = async ({ file, onSuccess, onError }) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('question_id', file.questionId);
+  const handleFormChange = () => {
+    setFormChanged(true);
+  };
 
+  const validateSection = async (questions) => {
     try {
-      const response = await fetch('/api/v1/vendor/questionnaires/risk-assessment/upload/', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: formData
-      });
-
-      if (!response.ok) throw new Error('Upload failed');
-
-      const result = await response.json();
-      setUploadedFiles(prev => ({
-        ...prev,
-        [file.questionId]: {
-          uid: result.document_id,
-          name: file.name,
-          status: 'done',
-          url: result.file_url
-        }
-      }));
-      onSuccess(result, file);
+      const values = await form.validateFields(
+        questions.map(q => `question_${q.id}`)
+      );
+      return { valid: true, values };
     } catch (error) {
-      console.error('Upload error:', error);
-      onError(error);
+      return { valid: false, error };
+    }
+  };
+
+  const handleFactorChange = async (newFactor) => {
+    const currentSubFactorQuestions = mainFactors[currentFactor]
+      ?.sub_factors[currentSubFactor]?.questions || [];
+
+    const validation = await validateSection(currentSubFactorQuestions);
+    if (!validation.valid) {
+      message.error('Please complete all questions in the current section before proceeding');
+      return;
+    }
+
+    setCurrentFactor(newFactor);
+    setCurrentSubFactor(0);
+  };
+
+  const handleSubFactorChange = async (newSubFactor) => {
+    const currentSubFactorQuestions = mainFactors[currentFactor]
+      ?.sub_factors[currentSubFactor]?.questions || [];
+
+    const validation = await validateSection(currentSubFactorQuestions);
+    if (!validation.valid) {
+      message.error('Please complete all questions in the current section before proceeding');
+      return;
+    }
+
+    setCurrentSubFactor(newSubFactor);
+  };
+
+  const handleReturnToDashboard = () => {
+    if (formChanged) {
+      Modal.confirm({
+        title: 'Unsaved Changes',
+        content: 'Would you like to save your changes before returning to the dashboard?',
+        okText: 'Save & Return',
+        cancelText: 'Return Without Saving',
+        onOk: async () => {
+          await handleSave();
+          navigate('/vendor/dashboard');
+        },
+        onCancel: () => {
+          navigate('/vendor/dashboard');
+        }
+      });
+    } else {
+      navigate('/vendor/dashboard');
     }
   };
 
   const handleSave = async () => {
     try {
       setSaving(true);
-      const values = await form.validateFields();
-      
-      const responses = Object.entries(values).map(([key, value]) => {
-        const questionId = parseInt(key.split('_')[1]);
-        const question = mainFactors
-          .flatMap(f => f.sub_factors)
-          .flatMap(sf => sf.questions)
-          .find(q => q.id === questionId);
+      const formValues = form.getFieldsValue(true);
 
-        return {
-          question_id: questionId,
-          answer: {
-            type: question.type,
-            value: value
-          }
-        };
+      const responses = [];
+      mainFactors.forEach(factor => {
+        factor.sub_factors.forEach(subFactor => {
+          subFactor.questions.forEach(question => {
+            const value = formValues[`question_${question.id}`];
+            const response = {
+              question_id: question.id,
+              type: question.type
+            };
+
+            if (question.type === 'YN') {
+              response.answer = value;
+            } else if (question.type === 'MC') {
+              response.choice_id = value;
+            } else if (question.type === 'SA') {
+              response.answer = value?.trim() || '';
+            }
+
+            responses.push(response);
+          });
+        });
       });
 
       const response = await fetch('/api/v1/vendor/questionnaires/risk-assessment/save/', {
@@ -139,69 +193,110 @@ const RiskAssessmentQuestionnaire = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save responses');
+        throw new Error('Failed to save progress');
       }
 
+      setFormChanged(false);
       message.success('Progress saved successfully');
     } catch (error) {
-      console.error('Error saving progress:', error);
+      console.error('Failed to save progress:', error);
       message.error('Failed to save progress');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleSubmit = () => {
-    Modal.confirm({
-      title: 'Submit Risk Assessment',
-      content: 'Are you sure you want to submit? You cannot modify your answers after submission.',
-      onOk: async () => {
-        try {
-          setSubmitting(true);
-          const values = await form.validateFields();
-          
-          const responses = Object.entries(values).map(([key, value]) => {
-            const questionId = parseInt(key.split('_')[1]);
-            const question = mainFactors
-              .flatMap(f => f.sub_factors)
-              .flatMap(sf => sf.questions)
-              .find(q => q.id === questionId);
+  const handleSubmit = async () => {
+    try {
+      const formValues = form.getFieldsValue(true);
+      const allResponses = [];
+      const missingQuestions = [];
+      console.log("Track" , formValues)
 
-            return {
-              question_id: questionId,
-              answer: {
-                type: question.type,
-                value: value
-              }
-            };
+      mainFactors.forEach(factor => {
+          factor.sub_factors.forEach(subFactor => {
+              subFactor.questions.forEach(question => {
+                  const value = formValues[`question_${question.id}`];
+                  
+                  const response = {
+                    question_id: question.id,
+                    type: question.type
+                  };
+
+            if (question.type === 'FU') {
+                const fileInfo = uploadedFiles[question.id];
+                if (!fileInfo) {
+                  missingQuestions.push(question.text);
+                } else {
+                  // Include file information in the response
+                  response.file_upload = {
+                    document_id: fileInfo.uid,
+                    file_url: fileInfo.url
+                  };
+                }
+              }else if (value == undefined || (typeof value === 'string' && !value.trim())) {
+              missingQuestions.push(question.text);
+            }
+
+
+            if (question.type === 'YN') {
+              response.answer = value;
+            } else if (question.type === 'MC') {
+              response.choice_id = value;
+            } else if (question.type === 'SA') {
+              response.answer = value?.trim() || '';
+            }
+
+            allResponses.push(response);
           });
+        });
+      });
 
-          const response = await fetch('/api/v1/vendor/questionnaires/risk-assessment/submit/', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-              responses,
-              submit: true
-            })
-          });
-
-          if (!response.ok) {
-            throw new Error('Failed to submit questionnaire');
-          }
-
-          message.success('Risk assessment submitted successfully');
-          navigate('/vendor/dashboard');
-        } catch (error) {
-          console.error('Error submitting questionnaire:', error);
-          message.error('Failed to submit questionnaire');
-        } finally {
-          setSubmitting(false);
-        }
+      if (missingQuestions.length > 0) {
+        message.error(
+          `Please answer all questions. Missing answers for: ${missingQuestions.join(', ')}`
+        );
+        return;
       }
-    });
+
+      Modal.confirm({
+        title: 'Submit Questionnaire',
+        content: 'Are you sure you want to submit? You cannot modify your answers after submission.',
+        onOk: async () => {
+          setSubmitting(true);
+          try {
+            console.log("Track response", allResponses);
+            const response = await fetch('/api/v1/vendor/questionnaires/risk-assessment/submit/', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({ 
+                responses: allResponses,
+                submit: true
+              })
+            });
+
+            if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to submit questionnaire');
+            }
+
+            message.success('Questionnaire submitted successfully');
+            navigate('/vendor/dashboard');
+          } catch (error) {
+            console.error('Submission error:', error);
+            message.error(error.message || 'Failed to submit questionnaire');
+          } finally {
+            setSubmitting(false);
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Form error:', error);
+      message.error('Please ensure all questions are answered correctly');
+    }
   };
 
   const renderQuestion = (question) => {
@@ -225,19 +320,34 @@ const RiskAssessmentQuestionnaire = () => {
         );
       case 'SA':
         return <TextArea rows={4} />;
-      case 'FU':
-        return (
-          <Upload
-            customRequest={handleUpload}
-            fileList={uploadedFiles[question.id] ? [uploadedFiles[question.id]] : []}
-            beforeUpload={file => {
-              file.questionId = question.id;
-              return true;
-            }}
-          >
-            <Button icon={<UploadOutlined />}>Upload File</Button>
-          </Upload>
-        );
+        case 'FU':
+            return (
+                <FileUploadQuestion
+                questionId={question.id}
+                questionnaireId={questionnaireId}  // Pass the stored questionnaire ID
+                value={uploadedFiles[question.id]}
+                onChange={(fileInfo) => {
+                    if (fileInfo) {
+                    setUploadedFiles(prev => ({
+                        ...prev,
+                        [question.id]: fileInfo
+                    }));
+                    form.setFieldsValue({
+                        [`question_${question.id}`]: fileInfo
+                    });
+                    } else {
+                    setUploadedFiles(prev => {
+                        const newFiles = { ...prev };
+                        delete newFiles[question.id];
+                        return newFiles;
+                    });
+                    form.setFieldsValue({
+                        [`question_${question.id}`]: undefined
+                    });
+                    }
+                }}
+                />
+            );
       default:
         return null;
     }
@@ -255,10 +365,21 @@ const RiskAssessmentQuestionnaire = () => {
 
   return (
     <div className="p-4">
-      <Card title="Risk Assessment Questionnaire" className="mb-4">
+      <Card 
+        title="Risk Assessment Questionnaire" 
+        className="mb-4"
+        extra={
+          <Button 
+            icon={<HomeOutlined className="w-4 h-4" />}
+            onClick={handleReturnToDashboard}
+          >
+            Return to Dashboard
+          </Button>
+        }
+      >
         <Steps
           current={currentFactor}
-          onChange={setCurrentFactor}
+          onChange={handleFactorChange}
           items={mainFactors.map(factor => ({
             title: factor.name,
             description: `Weight: ${factor.weight}%`
@@ -272,14 +393,15 @@ const RiskAssessmentQuestionnaire = () => {
           <Progress 
             percent={Math.round((currentSubFactor / currentSubFactors.length) * 100)} 
             size="small"
+            className="w-32"
           />
         }
       >
         <Steps
           size="small"
           current={currentSubFactor}
-          onChange={setCurrentSubFactor}
-          style={{ marginBottom: 24 }}
+          onChange={handleSubFactorChange}
+          className="mb-6"
           items={currentSubFactors.map(sf => ({
             title: sf.name,
             description: `Weight: ${sf.weight}%`
@@ -290,7 +412,27 @@ const RiskAssessmentQuestionnaire = () => {
           form={form}
           layout="vertical"
           className="max-w-2xl mx-auto"
+          onValuesChange={handleFormChange}
         >
+          {/* Hidden fields for all questions */}
+          <div style={{ display: 'none' }}>
+            {mainFactors.flatMap(factor =>
+              factor.sub_factors.flatMap(subFactor =>
+                subFactor.questions.map(question => (
+                  <Form.Item
+                    key={`hidden-${question.id}`}
+                    name={`question_${question.id}`}
+                  >
+                    {question.type === 'YN' && <Radio.Group />}
+                    {question.type === 'MC' && <Radio.Group />}
+                    {question.type === 'SA' && <TextArea />}
+                  </Form.Item>
+                ))
+              )
+            )}
+          </div>
+
+          {/* Visible fields for current section */}
           {currentQuestions.map(question => (
             <Form.Item
               key={question.id}
@@ -298,12 +440,35 @@ const RiskAssessmentQuestionnaire = () => {
               label={
                 <Space>
                   {question.text}
-                  <small className="text-gray-400">
+                  <span className="text-gray-400 text-sm">
                     (Weight: {question.weight}%)
-                  </small>
+                  </span>
+                  <Tooltip title={
+                    question.type === 'FU' 
+                      ? "Please upload a file" 
+                      : "This field is required"
+                  }>
+                    <InfoOutlined className="w-4 h-4 text-blue-500" />
+                  </Tooltip>
                 </Space>
               }
-              rules={[{ required: true, message: 'This question is required' }]}
+              rules={[
+                { 
+                  required: question.type !== 'FU', 
+                  message: `Please answer: ${question.text}` 
+                },
+                ...(question.type === 'SA' ? [
+                  { 
+                    min: 3, 
+                    message: 'Answer must be at least 3 characters long' 
+                  },
+                  {
+                    whitespace: true,
+                    message: 'Answer cannot be only whitespace'
+                  }
+                ] : [])
+              ]}
+              validateTrigger={['onBlur', 'onChange']}
             >
               {renderQuestion(question)}
             </Form.Item>
@@ -312,11 +477,12 @@ const RiskAssessmentQuestionnaire = () => {
           <div className="flex justify-between mt-6">
             <Space>
               <Button
+                icon={<ArrowLeftOutlined className="w-4 h-4" />}
                 onClick={() => {
                   if (currentSubFactor > 0) {
-                    setCurrentSubFactor(currentSubFactor - 1);
+                    handleSubFactorChange(currentSubFactor - 1);
                   } else if (currentFactor > 0) {
-                    setCurrentFactor(currentFactor - 1);
+                    handleFactorChange(currentFactor - 1);
                     setCurrentSubFactor(mainFactors[currentFactor - 1].sub_factors.length - 1);
                   }
                 }}
@@ -325,8 +491,10 @@ const RiskAssessmentQuestionnaire = () => {
                 Previous
               </Button>
               <Button
+                icon={<SaveOutlined className="w-4 h-4" />}
                 onClick={handleSave}
                 loading={saving}
+                disabled={!formChanged}
               >
                 Save Progress
               </Button>
@@ -337,6 +505,7 @@ const RiskAssessmentQuestionnaire = () => {
                currentSubFactor === currentSubFactors.length - 1 ? (
                 <Button
                   type="primary"
+                  icon={<SendOutlined className="w-4 h-4" />}
                   onClick={handleSubmit}
                   loading={submitting}
                 >
@@ -347,9 +516,9 @@ const RiskAssessmentQuestionnaire = () => {
                   type="primary"
                   onClick={() => {
                     if (currentSubFactor < currentSubFactors.length - 1) {
-                      setCurrentSubFactor(currentSubFactor + 1);
+                      handleSubFactorChange(currentSubFactor + 1);
                     } else {
-                      setCurrentFactor(currentFactor + 1);
+                      handleFactorChange(currentFactor + 1);
                       setCurrentSubFactor(0);
                     }
                   }}
