@@ -5,6 +5,7 @@ import {
     FormOutlined,
     UserOutlined,
     LogoutOutlined,
+    AreaChartOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -71,6 +72,12 @@ const UserSider = () => {
                                 onClick: () => navigate('/vendor/questionnaires/risk-assessment')
                             }
                         ]
+                    },
+                    {
+                        key: '/vendor/risk-analysis',
+                        icon: <AreaChartOutlined />,
+                        label: 'Risk Analysis',
+                        onClick: () => navigate('/vendor/risk-analysis')
                     },
                     {
                         key: 'profile',

@@ -8,6 +8,10 @@ import ContextualQuestionnaire from './pages/vendor/questionnaires/ContextualQue
 import RiskAssessmentQuestionnaire from './pages/vendor/questionnaires/RiskAssessmentQuestionnaire';
 import AdminDashboard from './pages/admin/AdminDashboardPage';
 import SubmissionReview from './pages/admin/SubmissionReview';
+import RegisterPage from './pages/auth/RegisterPage';
+import RiskAnalysis from './pages/vendor/RiskAnalysis';
+import RATeamRiskAnalysis from './pages/admin/RATeamRiskAnalysis';
+
 
 function App() {
   return (
@@ -16,6 +20,7 @@ function App() {
         <Routes>
           {/* Public Routes */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           
           {/* Vendor Routes */}
           <Route
@@ -50,7 +55,14 @@ function App() {
               </ProtectedRoute>
             }
           />
-
+          <Route
+            path="/vendor/risk-analysis"
+            element={
+              <ProtectedRoute allowedRoles={['Vendor']}>
+                <RiskAnalysis />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/admin/dashboard"
             element={
@@ -64,9 +76,26 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['RA_Team']}>
                 <SubmissionReview />
+              </ProtectedRoute>       
+            }
+          />
+          <Route
+            path="/vendor/risk-analysis"
+            element={
+              <ProtectedRoute allowedRoles={['Vendor']}>
+                <RiskAnalysis />
               </ProtectedRoute>
-  }
-/>
+            }
+          />
+          
+          <Route
+            path="/admin/risk-analysis/:submissionId"
+            element={
+              <ProtectedRoute allowedRoles={['RA_Team']}>
+                <RATeamRiskAnalysis />
+              </ProtectedRoute>
+            }
+          />
           {/* <Route
             path="/admin"
           >

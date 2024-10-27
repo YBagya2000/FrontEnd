@@ -1,7 +1,7 @@
 // LoginPage.jsx
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Card, Alert, Typography } from 'antd';
+import { Link, useNavigate } from 'react-router-dom';
+import { Form, Input, Button, Card, Alert, Typography, Space, Divider } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -131,9 +131,17 @@ const LoginPage = () => {
                         >
                             Sign In
                         </Button>
+                        <Divider />
+                        <div style={{ textAlign: 'center' }}>
+                <Space>
+                    <Text type="secondary">Not Registered Yet?</Text>
+                    <Link to="/register">Register</Link>
+                </Space>
+            </div>
                     </Form.Item>
                 </Form>
             </Card>
+            
         </div>
     );
 };

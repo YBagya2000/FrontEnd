@@ -12,7 +12,8 @@ import {
   Spin,
   Alert,
   Modal,
-  Divider
+  Divider,
+  Tooltip
 } from 'antd';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -20,12 +21,45 @@ import {
   SaveOutlined,
   CheckCircleOutlined,
   FileOutlined,
-  HomeOutlined
+  HomeOutlined,
+  InfoCircleOutlined,
+  AreaChartOutlined
 } from '@ant-design/icons';
+import PropTypes from 'prop-types';
 
 const { Content } = Layout;
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+
+// Document display component
+const DocumentDisplay = ({ fileUrl, fileName }) => {
+  if (!fileUrl) return <Text type="secondary">No document uploaded</Text>;
+
+  // Add base URL if needed
+  const fullUrl = fileUrl.startsWith('http') 
+    ? fileUrl 
+    : `${window.location.origin}${fileUrl}`;
+
+  return (
+    <div className="p-2 border rounded mt-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <FileOutlined className="mr-2" />
+          <Text>{fileName || fileUrl.split('/').pop()}</Text>
+        </div>
+        <Space>
+          <Button 
+            type="primary" 
+            size="small" 
+            onClick={() => window.open(fullUrl, '_blank')}
+          >
+            View Document
+          </Button>
+        </Space>
+      </div>
+    </div>
+  );
+};
 
 const SubmissionReview = () => {
   const [form] = Form.useForm();
@@ -34,12 +68,11 @@ const SubmissionReview = () => {
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [completing, setCompleting] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [submission, setSubmission] = useState(null);
   const [currentSection, setCurrentSection] = useState('corporate');
   const [error, setError] = useState(null);
 
-  // Fetch submission data
   useEffect(() => {
     const fetchSubmission = async () => {
       try {
@@ -55,18 +88,24 @@ const SubmissionReview = () => {
 
         const data = await response.json();
         setSubmission(data);
-        
-        // Set initial form values for any existing scores
-        if (data.risk_assessment?.responses) {
-          const formValues = {};
-          data.risk_assessment.responses.forEach(response => {
-            if (response.requires_scoring) {
-              formValues[`score_${response.question_id}`] = response.score;
-              formValues[`comment_${response.question_id}`] = response.ra_comment;
-            }
+
+        // Set initial form values for existing scores
+        const formValues = {};
+        data.risk_assessment.main_factors.forEach(factor => {
+          factor.sub_factors.forEach(subFactor => {
+            subFactor.questions.forEach(question => {
+              if (question.answer?.requires_scoring) {
+                if (question.answer?.score !== null) {
+                  formValues[`score_${question.id}`] = question.answer.score;
+                }
+                if (question.answer?.ra_comment) {
+                  formValues[`comment_${question.id}`] = question.answer.ra_comment;
+                }
+              }
+            });
           });
-          form.setFieldsValue(formValues);
-        }
+        });
+        form.setFieldsValue(formValues);
       } catch (error) {
         console.error('Error fetching submission:', error);
         setError(error.message);
@@ -90,7 +129,7 @@ const SubmissionReview = () => {
           const questionId = key.split('_')[1];
           scores.push({
             question_id: parseInt(questionId),
-            score: value,
+            score: parseFloat(value),
             comment: values[`comment_${questionId}`] || ''
           });
         }
@@ -120,31 +159,62 @@ const SubmissionReview = () => {
 
   const handleCompleteReview = async () => {
     try {
-      setCompleting(true);
+      setSubmitting(true);
+      const values = await form.validateFields();
       
-      const response = await fetch(`/api/v1/ra-team/submissions/${submissionId}/complete/`, {
+      // Transform and validate scores
+      const scores = Object.entries(values)
+        .filter(([key]) => key.startsWith('score_'))
+        .map(([key, value]) => {
+          const questionId = key.split('_')[1];
+          return {
+            question_id: parseInt(questionId),
+            score: parseFloat(value),
+            comment: values[`comment_${questionId}`] || ''
+          };
+        });
+
+      // Submit scores first
+      const scoreResponse = await fetch(`/api/v1/ra-team/submissions/${submissionId}/score/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ scores })
+      });
+
+      if (!scoreResponse.ok) {
+        const errorData = await scoreResponse.json();
+        throw new Error(errorData.error || 'Failed to save scores');
+      }
+
+      // Complete the review
+      const completeResponse = await fetch(`/api/v1/ra-team/submissions/${submissionId}/complete/`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to complete review');
+      if (!completeResponse.ok) {
+        const errorData = await completeResponse.json();
+        throw new Error(errorData.error || 'Failed to complete review');
       }
 
-      const result = await response.json();
+      const result = await completeResponse.json();
       message.success('Review completed successfully');
-      
-      // Show final risk score
+
       if (result.risk_calculation) {
         Modal.success({
           title: 'Risk Assessment Complete',
           content: (
             <div>
               <p>Final Risk Score: {result.risk_calculation.final_score.toFixed(2)}</p>
-              <p>Confidence Interval: [{result.risk_calculation.confidence_interval.low.toFixed(2)}, 
-                                     {result.risk_calculation.confidence_interval.high.toFixed(2)}]</p>
+              <p>Confidence Interval: [
+                {result.risk_calculation.confidence_interval.low.toFixed(2)}, 
+                {result.risk_calculation.confidence_interval.high.toFixed(2)}]
+              </p>
             </div>
           ),
           onOk: () => navigate('/admin/dashboard')
@@ -154,9 +224,9 @@ const SubmissionReview = () => {
       }
     } catch (error) {
       console.error('Error completing review:', error);
-      message.error('Failed to complete review');
+      message.error(error.message || 'Failed to complete review');
     } finally {
-      setCompleting(false);
+      setSubmitting(false);
     }
   };
 
@@ -166,7 +236,6 @@ const SubmissionReview = () => {
         <div key={index} className="mb-4">
           <Space direction="vertical" className="w-full">
             <Text strong>{response.question.text}</Text>
-            <Text type="secondary">Section: {response.question.section}</Text>
             <div className="bg-gray-50 p-2 rounded">
               <Text>{response.response_text}</Text>
             </div>
@@ -176,17 +245,16 @@ const SubmissionReview = () => {
       ))}
     </Card>
   );
-  
+
   const renderContextualSection = () => (
     <Card title="Contextual Questionnaire Review">
       {submission?.contextual_questionnaire?.responses?.map((response, index) => (
         <div key={index} className="mb-4">
           <Space direction="vertical" className="w-full">
             <Text strong>{response.question.text}</Text>
-            <Text type="secondary">Weight: {response.question.weight}%</Text>
             <div className="bg-gray-50 p-2 rounded">
               <Text>Selected: {response.selected_choice.text}</Text>
-              <Text className="ml-2 text-gray-500">
+              <Text type="secondary" className="ml-2">
                 (Modifier: {response.selected_choice.modifier > 0 ? '+' : ''}
                 {response.selected_choice.modifier}%)
               </Text>
@@ -195,17 +263,97 @@ const SubmissionReview = () => {
           <Divider />
         </div>
       ))}
-      {submission?.contextual_questionnaire?.calculated_modifier && (
-        <Alert
-          message="Calculated Risk Modifier"
-          description={`${submission.contextual_questionnaire.calculated_modifier > 0 ? '+' : ''}
-            ${(submission.contextual_questionnaire.calculated_modifier * 100).toFixed(2)}%`}
-          type="info"
-          showIcon
-        />
-      )}
     </Card>
   );
+
+  const renderQuestionResponse = (question) => {
+    const answer = question.answer;
+
+    switch (question.type) {
+      case 'YN':
+        return (
+          <Text className="bg-gray-50 p-2 rounded block">
+            {answer?.value ? 'Yes' : 'No'}
+          </Text>
+        );
+      
+      case 'MC': {
+        const selectedChoice = question.choices?.find(c => c.id === answer?.value);
+        return (
+          <Text className="bg-gray-50 p-2 rounded block">
+            {selectedChoice ? selectedChoice.text : 'No selection'}
+          </Text>
+        );
+      }
+      
+      case 'SA':
+        return (
+          <>
+            <Text className="bg-gray-50 p-2 rounded block mb-4">
+              {answer?.value || 'No response provided'}
+            </Text>
+            <Form.Item
+              name={`score_${question.id}`}
+              label="Score (0-10)"
+              rules={[
+                { required: true, message: 'Score is required' },
+                {
+                  type: 'number',
+                  transform: (value) => parseFloat(value),
+                  min: 0,
+                  max: 10,
+                  message: 'Score must be between 0 and 10'
+                }
+              ]}
+            >
+              <Input type="number" min={0} max={10} step={0.1} />
+            </Form.Item>
+            <Form.Item
+              name={`comment_${question.id}`}
+              label="Comment"
+            >
+              <TextArea rows={2} />
+            </Form.Item>
+          </>
+        );
+      
+      case 'FU':
+        return (
+          <>
+            <DocumentDisplay fileUrl={answer?.file_url} />
+            {answer?.requires_scoring && (
+              <>
+                <Form.Item
+                  name={`score_${question.id}`}
+                  label="Score (0-10)"
+                  rules={[
+                    { required: true, message: 'Score is required' },
+                    {
+                      type: 'number',
+                      transform: (value) => parseFloat(value),
+                      min: 0,
+                      max: 10,
+                      message: 'Score must be between 0 and 10'
+                    }
+                  ]}
+                >
+                  <Input type="number" min={0} max={10} step={0.1} />
+                </Form.Item>
+                <Form.Item
+                  name={`comment_${question.id}`}
+                  label="Comment"
+                >
+                  <TextArea rows={2} />
+                </Form.Item>
+              </>
+            )}
+          </>
+        );
+      
+      default:
+        return <Text type="secondary">Unknown question type</Text>;
+    }
+  };
 
   const renderRiskAssessmentSection = () => (
     <div>
@@ -215,7 +363,9 @@ const SubmissionReview = () => {
           title={
             <Space>
               {factor.name}
-              <Text type="secondary">Weight: {factor.weight}%</Text>
+              <Text type="secondary" className="text-sm">
+                (Weight: {factor.weight}%)
+              </Text>
             </Space>
           }
           className="mb-4"
@@ -224,96 +374,27 @@ const SubmissionReview = () => {
             <div key={subFactorIndex} className="mb-4">
               <Title level={4}>
                 {subFactor.name}
-                <Text type="secondary" className="ml-2">
-                  Weight: {subFactor.weight}%
+                <Text type="secondary" className="text-sm ml-2">
+                  (Weight: {subFactor.weight}%)
                 </Text>
               </Title>
               
-              {subFactor.questions.map((question, questionIndex) => {
-                const response = submission.risk_assessment.responses.find(
-                  r => r.question_id === question.id
-                );
-                
-                return (
-                  <div key={questionIndex} className="mb-6 border-b pb-4">
-                    <Space direction="vertical" className="w-full">
+              {subFactor.questions.map((question, questionIndex) => (
+                <div 
+                  key={questionIndex} 
+                  className="mb-6 p-4 border rounded-lg bg-white shadow-sm"
+                >
+                  <Space direction="vertical" className="w-full">
+                    <Space align="center">
                       <Text strong>{question.text}</Text>
-                      <Text type="secondary">
-                        Type: {question.type} | Weight: {question.weight}%
-                      </Text>
-                      
-                      {/* Show response based on question type */}
-                      {question.type === 'YN' && (
-                        <Text className="bg-gray-50 p-2 rounded">
-                          {response?.yes_no_response ? 'Yes' : 'No'}
-                        </Text>
-                      )}
-                      
-                      {question.type === 'MC' && (
-                        <Text className="bg-gray-50 p-2 rounded">
-                          {question.choices.find(c => c.id === response?.selected_choice)?.text}
-                        </Text>
-                      )}
-                      
-                      {question.type === 'SA' && (
-                        <div>
-                          <div className="bg-gray-50 p-2 rounded mb-2">
-                            {response?.response_text}
-                          </div>
-                          <Form.Item
-                            name={`score_${question.id}`}
-                            label="Score (0-10)"
-                            rules={[
-                              { required: true, message: 'Score is required' },
-                              { type: 'number', min: 0, max: 10 }
-                            ]}
-                          >
-                            <Input type="number" min={0} max={10} step={0.1} />
-                          </Form.Item>
-                          <Form.Item
-                            name={`comment_${question.id}`}
-                            label="Comment"
-                          >
-                            <TextArea rows={2} />
-                          </Form.Item>
-                        </div>
-                      )}
-                      
-                      {question.type === 'FU' && (
-                        <div>
-                          <Space direction="vertical" className="w-full">
-                            <a 
-                              href={response?.file_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="flex items-center text-blue-600 hover:text-blue-800"
-                            >
-                              <FileOutlined className="mr-2" />
-                              View Document
-                            </a>
-                            <Form.Item
-                              name={`score_${question.id}`}
-                              label="Score (0-10)"
-                              rules={[
-                                { required: true, message: 'Score is required' },
-                                { type: 'number', min: 0, max: 10 }
-                              ]}
-                            >
-                              <Input type="number" min={0} max={10} step={0.1} />
-                            </Form.Item>
-                            <Form.Item
-                              name={`comment_${question.id}`}
-                              label="Comment"
-                            >
-                              <TextArea rows={2} />
-                            </Form.Item>
-                          </Space>
-                        </div>
-                      )}
+                      <Tooltip title={`Question Type: ${question.type}, Weight: ${question.weight}%`}>
+                        <InfoCircleOutlined className="text-blue-500" />
+                      </Tooltip>
                     </Space>
-                  </div>
-                );
-              })}
+                    {renderQuestionResponse(question)}
+                  </Space>
+                </div>
+              ))}
             </div>
           ))}
         </Card>
@@ -411,16 +492,29 @@ const SubmissionReview = () => {
                 type="primary"
                 icon={<CheckCircleOutlined />}
                 onClick={handleCompleteReview}
-                loading={completing}
+                loading={submitting}
               >
                 Complete Review
               </Button>
+              <Button
+                type="primary"
+                onClick={() => navigate(`/admin/risk-analysis/${submissionId}`)}
+                icon={<AreaChartOutlined />}
+              >
+                View Risk Analysis
+              </Button>
             </Space>
-          </div>
+            </div>
         </Form>
       </Content>
     </Layout>
   );
+};
+
+// PropTypes for the DocumentDisplay component
+DocumentDisplay.propTypes = {
+  fileUrl: PropTypes.string,
+  fileName: PropTypes.string
 };
 
 export default SubmissionReview;
