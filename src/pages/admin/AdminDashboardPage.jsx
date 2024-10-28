@@ -1,11 +1,11 @@
 //Vendor Dashboard
 
 import { useState, useEffect } from 'react';
-import { Layout, Menu, List, Button, Typography, Spin, Alert } from 'antd';
-import { FileSearchOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { Layout, List, Button, Typography, Spin, Alert } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import AdminSider from '../../components/AdminSider'
 
-const { Sider, Content } = Layout;
+const {  Content } = Layout;
 const { Title } = Typography;
 
 const API_VERSION = '/api/v1'; // Update this according to your API version
@@ -49,54 +49,12 @@ const AdminDashboardPage = () => {
     fetchPendingReviews();
   }, []);
 
-  const menuItems = [
-    {
-      key: 'pending',
-      icon: <FileSearchOutlined />,
-      label: 'Pending Reviews',
-    },
-    {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: 'Profile',
-    },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: 'Logout',
-    },
-  ];
 
-  const handleMenuClick = (item) => {
-    switch (item.key) {
-      case 'profile':
-        navigate('/profile');
-        break;
-      case 'logout':
-        localStorage.removeItem('token');
-        navigate('/login');
-        break;
-      default:
-        break;
-    }
-  };
 
   if (error) {
     return (
       <Layout style={{ minHeight: '100vh' }}>
-        <Sider
-          theme="light"
-          width={200}
-          style={{ borderRight: '1px solid #f0f0f0' }}
-        >
-          <Menu
-            mode="inline"
-            defaultSelectedKeys={['pending']}
-            items={menuItems}
-            onClick={handleMenuClick}
-            style={{ height: '100%', borderRight: 0 }}
-          />
-        </Sider>
+				<AdminSider />
         <Layout>
           <Content style={{ padding: '24px', background: '#fff' }}>
             <Alert
@@ -114,21 +72,7 @@ const AdminDashboardPage = () => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        theme="light"
-        width={200}
-        style={{
-          borderRight: '1px solid #f0f0f0',
-        }}
-      >
-        <Menu
-          mode="inline"
-          defaultSelectedKeys={['pending']}
-          items={menuItems}
-          onClick={handleMenuClick}
-          style={{ height: '100%', borderRight: 0 }}
-        />
-      </Sider>
+			<AdminSider />
 
       <Layout>
         <Content style={{ padding: '24px', background: '#fff' }}>

@@ -6,8 +6,9 @@ import PropTypes from 'prop-types';
 import CalculationStages from './CalculationStages';
 import RiskBreakdown from './RiskBreakdown';
 
-const RiskVisualization = ({ riskData }) => {
+const RiskVisualization = ({ riskData, finalScore }) => {
     const { final_score, confidence_interval } = riskData;
+	console.log(finalScore)
 
   // Prepare data for line chart
   const stageData = Object.entries(riskData.calculation_stages).map(([key, value]) => ({
@@ -15,6 +16,28 @@ const RiskVisualization = ({ riskData }) => {
     score: value.score,
     description: value.description
   }));
+
+	// Desired order of the names
+	const desiredOrder = [
+		"Initial Scoring",
+		"Fuzzy Processing",
+		"Weight Application",
+		"Contextual Adjustment",
+		"Final Calculation"
+	];
+
+	stageData.sort((a, b) => {
+		return desiredOrder.indexOf(a.name) - desiredOrder.indexOf(b.name);
+	});
+
+  // Overwrite the "Final Calculation" score with the finalScore prop
+  stageData.forEach(stage => {
+    if (stage.name === 'Final Calculation') {
+      stage.score = finalScore;
+    }
+  });
+
+	console.log(JSON.stringify(stageData))
 
   return (
     <div className="space-y-6">
@@ -63,7 +86,7 @@ const RiskVisualization = ({ riskData }) => {
       <div className="mt-6">
         <h3>Risk Score Evolution</h3>
         <LineChart
-          width={800}
+          width={1000}
           height={300}
           data={stageData}
           margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
@@ -107,7 +130,8 @@ RiskVisualization.propTypes = {
         high: PropTypes.number.isRequired
       }).isRequired,
       calculation_stages: PropTypes.object.isRequired
-    }).isRequired
+    }).isRequired,
+    finalScore: PropTypes.number.isRequired
   };
   
   // CalculationStages.jsx

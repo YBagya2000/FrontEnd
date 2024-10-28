@@ -11,6 +11,7 @@ import SubmissionReview from './pages/admin/SubmissionReview';
 import RegisterPage from './pages/auth/RegisterPage';
 import RiskAnalysis from './pages/vendor/RiskAnalysis';
 import RATeamRiskAnalysis from './pages/admin/RATeamRiskAnalysis';
+import RATeamAnalysisDashboard from './pages/admin/RATeamAnalysisDashboard';
 
 
 function App() {
@@ -96,6 +97,14 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/admin/analysis-dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['RA_Team']}>
+                <RATeamAnalysisDashboard />
+              </ProtectedRoute>
+            }
+/>
           {/* <Route
             path="/admin"
           >

@@ -8,6 +8,7 @@ import RiskBreakdown from '../../components/RiskBreakdown';
 import CalculationStages from '../../components/CalculationStages';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 
+
 const { Content } = Layout;
 
 const RATeamRiskAnalysis = () => {

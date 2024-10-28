@@ -1,3 +1,4 @@
+// AdminSider.jsx
 import { useState } from 'react';
 import { Layout, Menu } from 'antd';
 import {
@@ -5,7 +6,8 @@ import {
     UserOutlined,
     LogoutOutlined,
     BellOutlined,
-    FileOutlined
+    FileOutlined,
+    BarChartOutlined  
 } from '@ant-design/icons';
 
 import { useNavigate } from 'react-router-dom';
@@ -15,7 +17,6 @@ const { Sider } = Layout;
 
 const AdminSider = () => {
     const [collapsed, setCollapsed] = useState(false);
-
     const { logout } = useAuth();
     const navigate = useNavigate();
 
@@ -23,6 +24,7 @@ const AdminSider = () => {
         logout();
         navigate('/login');
     };
+
     return (
         <Sider
             collapsible
@@ -39,24 +41,31 @@ const AdminSider = () => {
                         key: '1',
                         icon: <DashboardOutlined />,
                         label: 'Pending Reviews',
+                        onClick: () => navigate('/admin/dashboard')
                     },
                     {
                         key: '2',
+                        icon: <BarChartOutlined />,
+                        label: 'Risk Analysis',
+                        onClick: () => navigate('/admin/analysis-dashboard')
+                    },
+                    {
+                        key: '3',
                         icon: <UserOutlined />,
                         label: 'Profile',
                     },
                     {
-                        key: '3',
+                        key: '4',
                         icon: <BellOutlined />,
                         label: 'Notifications',
                     },
                     {
-                        key: '4',
+                        key: '5',
                         icon: <FileOutlined />,
                         label: 'Documents',
                     },
                     {
-                        key: '5',
+                        key: '6',
                         icon: <LogoutOutlined />,
                         label: 'Logout',
                         onClick: handleLogout,
@@ -64,7 +73,7 @@ const AdminSider = () => {
                 ]}
             />
         </Sider>
-    )
-}
+    );
+};
 
-export default AdminSider
+export default AdminSider;

@@ -13,6 +13,7 @@ const RiskAnalysis = () => {
     const [riskData, setRiskData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [finalWeightedScore, setFinalWeightedScore] = useState(0);
   
     useEffect(() => {
       const fetchRiskAnalysis = async () => {
@@ -30,8 +31,17 @@ const RiskAnalysis = () => {
           const data = await response.json();
           console.log('Risk analysis data:', data);
           if (data) {
+
+					const securityMeasures = data.calculation_stages.weight_application.details['Security Measures'].weighted_score;
+					const vendorManagement = data.calculation_stages.weight_application.details['Vendor Management'].weighted_score;
+					const businessContinuity = data.calculation_stages.weight_application.details['Business Continuity'].weighted_score;
+					const incidentManagement = data.calculation_stages.weight_application.details['Incident Management'].weighted_score;
+					const complianceAndRegulations = data.calculation_stages.weight_application.details['Compliance & Regulations'].weighted_score;
+					const finalWeightedScore = (10 - (securityMeasures + vendorManagement + businessContinuity + incidentManagement + complianceAndRegulations));
+					setFinalWeightedScore(finalWeightedScore);
+
             setRiskData({
-              final_score: Number(data.final_score),
+              final_score: Number((finalWeightedScore).toFixed(1)),
               confidence_interval: {
                 low: Number(data.confidence_interval?.low || 0),
                 high: Number(data.confidence_interval?.high || 0)
@@ -63,7 +73,7 @@ const RiskAnalysis = () => {
                 ) : error ? (
                   <Alert type="error" message={error} />
                 ) : (
-                  <RiskVisualization riskData={riskData} />
+                  <RiskVisualization riskData={riskData} finalScore={finalWeightedScore} />
                 )}
               </Card>
       
@@ -75,7 +85,7 @@ const RiskAnalysis = () => {
                 ) : !riskData?.calculation_stages ? (
                   <Alert type="info" message="No calculation stages data available" />
                 ) : (
-                  <CalculationStages stages={riskData.calculation_stages} />
+                  <CalculationStages stages={riskData.calculation_stages} finalScore={finalWeightedScore} />
                 )}
               </Card>
       

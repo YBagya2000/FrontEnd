@@ -51,7 +51,7 @@ const RiskBreakdown = ({ factorScores }) => {
         <Space>
           {score}
           <Progress
-            percent={parseFloat(score) * 10}
+            percent={Number((parseFloat(score) * 10).toFixed(1))}
             steps={10}
             size="small"
             strokeColor="#1890ff"
@@ -81,7 +81,7 @@ const RiskBreakdown = ({ factorScores }) => {
         <Space>
           {score}
           <Progress
-            percent={parseFloat(score) * 10}
+            percent={Number((parseFloat(score) * 10).toFixed(1))}
             steps={10}
             size="small"
             strokeColor="#52c41a"

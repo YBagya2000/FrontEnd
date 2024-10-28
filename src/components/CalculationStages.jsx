@@ -6,7 +6,13 @@ import PropTypes from 'prop-types';
 const { Panel } = Collapse;
 const { Text } = Typography;
 
-const CalculationStages = ({ stages }) => {
+const CalculationStages = ({ stages, finalScore }) => {
+
+  // Overwrite the "Final Calculation" score with the finalScore prop
+  if (stages['final_calculation']) {
+    stages['final_calculation'].score = finalScore;
+  }
+
   return (
     <div className="space-y-6">
       <Steps
@@ -26,7 +32,7 @@ const CalculationStages = ({ stages }) => {
               <Panel
                 header={
                   <Text>
-                    Score: {value.score.toFixed(2)}
+                    Score: {value.score}
                   </Text>
                 }
                 key="1"
@@ -39,7 +45,7 @@ const CalculationStages = ({ stages }) => {
                         <li key={detailKey}>
                           {detailKey}: {
                             typeof detailValue === 'number' 
-                              ? detailValue.toFixed(2) 
+                              ? detailValue 
                               : detailValue
                           }
                         </li>
@@ -64,6 +70,7 @@ CalculationStages.propTypes = {
         details: PropTypes.objectOf(PropTypes.any),
       })
     ).isRequired,
+    finalScore: PropTypes.number.isRequired
   };
 
 export default CalculationStages;

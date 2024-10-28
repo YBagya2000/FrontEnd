@@ -210,11 +210,7 @@ const SubmissionReview = () => {
           title: 'Risk Assessment Complete',
           content: (
             <div>
-              <p>Final Risk Score: {result.risk_calculation.final_score.toFixed(2)}</p>
-              <p>Confidence Interval: [
-                {result.risk_calculation.confidence_interval.low.toFixed(2)}, 
-                {result.risk_calculation.confidence_interval.high.toFixed(2)}]
-              </p>
+              <p>Manual Scores Submitted for Calculation</p>
             </div>
           ),
           onOk: () => navigate('/admin/dashboard')
